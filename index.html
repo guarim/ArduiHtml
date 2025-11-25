@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Hand detection + Arduino</title>
+    <style>
+        body { background:#111; color:white; text-align:center; font-family:Arial; }
+        canvas { border:1px solid #444; }
+        #connectBtn { padding:10px 20px; font-size:18px; }
+    </style>
+
+    <!-- MediaPipe -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+</head>
+<body>
+
+<h2>Détection de mains + Contrôle Arduino</h2>
+
+<button id="connectBtn">Connecter Arduino</button><br><br>
+
+<video id="video" width="640" height="480" style="display:none;"></video>
+<canvas id="output" width="640" height="480"></canvas>
+
+<script>
+/* -------------------------------------------------------------
+   WebSerial → communication Arduino
+--------------------------------------------------------------*/
+let arduinoPort;
+let writer;
+
+async function connectArduino() {
+    arduinoPort = await navigator.serial.requestPort();
+    await arduinoPort.open({ baudRate: 9600 });
+    writer = arduinoPort.writable.getWriter();
+    alert("Arduino connecté !");
+}
+
+document.getElementById("connectBtn").onclick = connectArduino;
+
+async function sendToArduino(data) {
+    if (!writer) return;
+    const msg = new Uint8Array([data]);
+    await writer.write(msg);
+}
+
+/* -------------------------------------------------------------
+   Zones de détection (pastilles gauche / droite)
+   cercle rayon 80px
+--------------------------------------------------------------*/
+const leftZone = { x: 160, y: 240, r: 80 };
+const rightZone = { x: 480, y: 240, r: 80 };
+
+/* -------------------------------------------------------------
+   MediaPipe Hands
+--------------------------------------------------------------*/
+const video = document.getElementById("video");
+const canvas = document.getElementById("output");
+const ctx = canvas.getContext("2d");
+
+const hands = new Hands({
+    locateFile: file => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+});
+
+hands.setOptions({
+    maxNumHands: 2,
+    minDetectionConfidence: 0.6,
+    minTrackingConfidence: 0.6
+});
+
+hands.onResults(onResults);
+
+const camera = new Camera(video, {
+    onFrame: async () => { await hands.send({ image: video }); },
+    width: 640,
+    height: 480
+});
+camera.start();
+
+/* -------------------------------------------------------------
+   Fonction principale de traitement
+--------------------------------------------------------------*/
+function onResults(results) {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
+
+    // Dessiner les zones
+    ctx.strokeStyle = "red";
+    ctx.lineWidth = 3;
+    drawCircle(leftZone.x, leftZone.y, leftZone.r);
+    drawCircle(rightZone.x, rightZone.y, rightZone.r);
+
+    if (!results.multiHandLandmarks) return;
+
+    results.multiHandLandmarks.forEach((landmarks, index) => {
+        const handedness = results.multiHandedness[index].label; // Left / Right
+
+        // INDEX : landmark[8]
+        // POUCE : landmark[4]
+        let ix = landmarks[8].x * canvas.width;
+        let iy = landmarks[8].y * canvas.height;
+
+        let tx = landmarks[4].x * canvas.width;
+        let ty = landmarks[4].y * canvas.height;
+
+        // distance entre index et pouce
+        let d = Math.hypot(ix - tx, iy - ty);
+        let touching = (d < 40); // seuil contact
+
+        // Vérifier zone + contact
+        if (handedness === "Left") {
+            if (insideZone(ix, iy, leftZone) && touching) {
+                sendToArduino(1);  // Allume sortie 1
+            } else {
+                sendToArduino(2);  // Éteint sortie 1
+            }
+        }
+
+        if (handedness === "Right") {
+            if (insideZone(ix, iy, rightZone) && touching) {
+                sendToArduino(3);  // Allume sortie 2
+            } else {
+                sendToArduino(4);  // Éteint sortie 2
+            }
+        }
+
+        // Dessiner les landmarks
+        window.drawConnectors(ctx, landmarks, Hands.HAND_CONNECTIONS,
+            { color:"#00FF00", lineWidth:2 });
+        window.drawLandmarks(ctx, landmarks, { color:"#FFFF00", lineWidth:1 });
+    });
+}
+
+/* -------------------------------------------------------------
+   Utilitaires
+--------------------------------------------------------------*/
+function insideZone(x, y, zone) {
+    return Math.hypot(x - zone.x, y - zone.y) < zone.r;
+}
+
+function drawCircle(x, y, r) {
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI*2);
+    ctx.stroke();
+}
+</script>
+
+</body>
+</html>
