@@ -112,6 +112,7 @@
     overflow: hidden;
     border: 1px solid var(--border);
     background: #000;
+    width: 50%;
     aspect-ratio: 16 / 10;
     align-self: start;
   }
@@ -126,25 +127,47 @@
     position: absolute; inset: 0;
     width: 100%; height: 100%;
     transform: scaleX(-1);
+    transition: opacity .25s ease;
   }
+  #canvasOutput.hidden { opacity: 0; pointer-events: none; }
 
   .cam-overlay-label {
-    position: absolute; top: 14px; left: 14px;
-    font-family: var(--font-mono); font-size: .65rem;
-    letter-spacing: .18em; text-transform: uppercase;
+    position: absolute; top: 10px; left: 10px;
+    font-family: var(--font-mono); font-size: .6rem;
+    letter-spacing: .15em; text-transform: uppercase;
     color: rgba(201,216,232,.6);
-    background: rgba(8,12,16,.7);
-    padding: 4px 10px; border-radius: 4px;
+    background: rgba(8,12,16,.75);
+    padding: 3px 8px; border-radius: 4px;
     border: 1px solid var(--border);
   }
 
   /* FPS badge */
   #fps-badge {
-    position: absolute; top: 14px; right: 14px;
-    font-family: var(--font-mono); font-size: .7rem;
-    color: var(--accent1); background: rgba(8,12,16,.7);
-    padding: 4px 10px; border-radius: 4px;
+    position: absolute; top: 10px; right: 10px;
+    font-family: var(--font-mono); font-size: .65rem;
+    color: var(--accent1); background: rgba(8,12,16,.75);
+    padding: 3px 8px; border-radius: 4px;
     border: 1px solid rgba(0,229,255,.3);
+  }
+
+  /* Toggle overlay button */
+  #overlay-btn {
+    position: absolute; bottom: 10px; right: 10px;
+    font-family: var(--font-mono); font-size: .6rem;
+    letter-spacing: .1em; text-transform: uppercase;
+    padding: 5px 12px;
+    border: 1px solid rgba(0,229,255,.4);
+    border-radius: 5px;
+    background: rgba(8,12,16,.8);
+    color: var(--accent1);
+    cursor: pointer;
+    transition: background .2s, border-color .2s, color .2s;
+    z-index: 10;
+  }
+  #overlay-btn:hover { background: rgba(0,229,255,.12); }
+  #overlay-btn.off {
+    border-color: rgba(74,96,112,.5);
+    color: var(--text-dim);
   }
 
   /* ── Status cards ── */
@@ -342,6 +365,7 @@
     <canvas id="canvasOutput"></canvas>
     <div class="cam-overlay-label">🎥 Flux caméra — MediaPipe Hands</div>
     <div id="fps-badge">— fps</div>
+    <button id="overlay-btn" onclick="toggleOverlay()">👁 Overlay ON</button>
     <div id="face-zone-hint">↑ Zone visage — lever la main à hauteur du visage</div>
   </div>
 
@@ -421,6 +445,17 @@
 ───────────────────────────────────────────── */
 let serialPort   = null;
 let serialWriter = null;
+let showOverlay  = true;   // overlay visibility flag
+
+function toggleOverlay() {
+  showOverlay = !showOverlay;
+  const canvas = document.getElementById('canvasOutput');
+  const btn    = document.getElementById('overlay-btn');
+  canvas.classList.toggle('hidden', !showOverlay);
+  btn.textContent = showOverlay ? '👁 Overlay ON' : '🚫 Overlay OFF';
+  btn.classList.toggle('off', !showOverlay);
+  log(`Overlay détection ${showOverlay ? 'activé' : 'désactivé'}`, 'info');
+}
 
 // Current relay state: false = OFF, true = ON
 const relayState = { 5: false, 7: false };
